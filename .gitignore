@@ -1,5 +1,7 @@
-venv/
+
 backend/venv/
 __pycache__/
-*.pyc
+*.py[cod]
+
 .env
+ids.db
