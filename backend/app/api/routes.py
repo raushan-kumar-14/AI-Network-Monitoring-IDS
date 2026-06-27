@@ -2,8 +2,10 @@ from fastapi import APIRouter
 
 from app.api.endpoints.health import router as health_router
 from app.api.endpoints.logs import router as logs_router
+from app.api.endpoints.capture import router as capture_router
 
 api_router = APIRouter()
 
 api_router.include_router(health_router, tags=["Health"])
 api_router.include_router(logs_router, tags=["Network Logs"])
+api_router.include_router(capture_router, tags=["Live Capture"])

@@ -20,6 +20,7 @@ def create_network_log(
 )
 
     db_log = NetworkLog(
+        owner_username=log.owner_username,
         source_ip=log.source_ip,
         destination_ip=log.destination_ip,
         protocol=log.protocol,
@@ -35,7 +36,13 @@ def create_network_log(
     return db_log
 @router.get("/logs", response_model=list[NetworkLogResponse])
 def get_network_logs(
+    owner_username: str | None = None,
     db: Session = Depends(get_db)
 ):
-    logs = db.query(NetworkLog).all()
+    query = db.query(NetworkLog)
+
+    if owner_username:
+        query = query.filter(NetworkLog.owner_username == owner_username)
+
+    logs = query.all()
     return logs

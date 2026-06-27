@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 import TrafficChart from "./components/TrafficChart";
+import axios from "axios";
 
 function App() {
   const getInitialTheme = () => {
@@ -19,9 +20,87 @@ function App() {
       : "light";
   };
 
+  const getInitialSession = () => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    const savedSession = window.localStorage.getItem("netsentinel-session");
+
+    if (!savedSession) {
+      return null;
+    }
+
+    try {
+      const parsedSession = JSON.parse(savedSession);
+
+      if (
+        parsedSession &&
+        (parsedSession.role === "user" || parsedSession.role === "admin") &&
+        typeof parsedSession.username === "string"
+      ) {
+        return parsedSession;
+      }
+    } catch (error) {
+      return null;
+    }
+
+    return null;
+  };
+
+  const getInitialUsers = () => {
+    if (typeof window === "undefined") {
+      return [];
+    }
+
+    const savedUsers = window.localStorage.getItem("netsentinel-users");
+
+    if (!savedUsers) {
+      return [];
+    }
+
+    try {
+      const parsedUsers = JSON.parse(savedUsers);
+
+      if (Array.isArray(parsedUsers)) {
+        return parsedUsers.filter(
+          (user) =>
+            user &&
+            typeof user.username === "string" &&
+            typeof user.password === "string"
+        );
+      }
+    } catch (error) {
+      return [];
+    }
+
+    return [];
+  };
+
   const [logs, setLogs] = useState([]);
 
   const [theme, setTheme] = useState(getInitialTheme);
+
+  const [session, setSession] = useState(getInitialSession);
+
+  const [registeredUsers, setRegisteredUsers] = useState(getInitialUsers);
+
+  const [loginRole, setLoginRole] = useState("user");
+
+  const [authMode, setAuthMode] = useState("register");
+
+  const [loginForm, setLoginForm] = useState({
+    username: "",
+    password: "",
+  });
+
+  const [signupForm, setSignupForm] = useState({
+    username: "",
+    password: "",
+    confirmPassword: "",
+  });
+
+  const [authError, setAuthError] = useState("");
 
   const [filter, setFilter] = useState("ALL");
 
@@ -34,11 +113,13 @@ function App() {
   const [backendStatus, setBackendStatus] = useState(true);
 
   const [newLog, setNewLog] = useState({
+    owner_username: "",
     source_ip: "",
     destination_ip: "",
     protocol: "TCP",
     packet_size: "",
   });
+  const [captureRunning, setCaptureRunning] = useState(false);
 
   const isDarkMode = theme === "dark";
 
@@ -47,30 +128,97 @@ function App() {
     window.localStorage.setItem("theme", theme);
   }, [theme]);
 
+  useEffect(() => {
+    if (session) {
+      window.localStorage.setItem(
+        "netsentinel-session",
+        JSON.stringify(session)
+      );
+    } else {
+      window.localStorage.removeItem("netsentinel-session");
+    }
+  }, [session]);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      "netsentinel-users",
+      JSON.stringify(registeredUsers)
+    );
+  }, [registeredUsers]);
+
+  useEffect(() => {
+    setFilter("ALL");
+    setSearchTerm("");
+    setCurrentPage(1);
+    setLogs([]);
+    setLastUpdated("");
+    setBackendStatus(true);
+    setNewLog({
+      owner_username: session && session.role === "user" ? session.username : "",
+      source_ip: "",
+      destination_ip: "",
+      protocol: "TCP",
+      packet_size: "",
+    });
+  }, [session]);
+
   // Fetch logs from backend
   const fetchLogs = () => {
-  fetch("http://127.0.0.1:8000/logs")
-    .then((response) => response.json())
-    .then((data) => {
-      setLogs(data);
-      setBackendStatus(true);
-      setLastUpdated(new Date().toLocaleTimeString());
-    })
-    .catch((error) => {
-      console.error("Error fetching logs:", error);
-      setBackendStatus(false);
-    });
+    if (!session) {
+      return;
+    }
+
+    const endpoint =
+      session.role === "admin"
+        ? "http://127.0.0.1:8000/logs"
+        : `http://127.0.0.1:8000/logs?owner_username=${encodeURIComponent(
+            session.username
+          )}`;
+
+    fetch(endpoint)
+      .then((response) => response.json())
+      .then((data) => {
+        setLogs(data);
+        setBackendStatus(true);
+        setLastUpdated(new Date().toLocaleTimeString());
+      })
+      .catch((error) => {
+        console.error("Error fetching logs:", error);
+        setBackendStatus(false);
+      });
+  };
+  const startCapture = async () => {
+    await axios.post(
+        "http://127.0.0.1:5050/start",
+        {
+            username: session.username
+        }
+    );
+
+    setCaptureRunning(true);
+};
+
+const stopCapture = async () => {
+    await axios.post(
+        "http://127.0.0.1:5050/stop"
+    );
+
+    setCaptureRunning(false);
 };
   // Load logs when page loads
   useEffect(() => {
+    if (!session) {
+      return undefined;
+    }
+
     fetchLogs();
 
     const interval = setInterval(() => {
-        fetchLogs();
-    }, 5000);   // refresh every 5 seconds
+      fetchLogs();
+    }, 5000); // refresh every 5 seconds
 
     return () => clearInterval(interval);
-}, []);
+  }, [session]);
 
   // Statistics
   const totalLogs = logs.length;
@@ -137,6 +285,7 @@ const filteredLogs = logs
 
   const exportToCSV = () => {
   const headers = [
+    "Owner",
     "ID",
     "Source IP",
     "Destination IP",
@@ -147,6 +296,7 @@ const filteredLogs = logs
   ];
 
   const rows = filteredLogs.map((log) => [
+    log.owner_username,
     log.id,
     log.source_ip,
     log.destination_ip,
@@ -188,6 +338,20 @@ const filteredLogs = logs
   const handleSubmit = async (e) => {
     e.preventDefault();
 
+    if (!session) {
+      return;
+    }
+
+    const ownerUsername =
+      session.role === "admin"
+        ? newLog.owner_username.trim()
+        : session.username;
+
+    if (session.role === "admin" && !ownerUsername) {
+      alert("Please enter a client username for this log.");
+      return;
+    }
+
     try {
       const response = await fetch("http://127.0.0.1:8000/logs", {
         method: "POST",
@@ -195,6 +359,7 @@ const filteredLogs = logs
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          owner_username: ownerUsername,
           source_ip: newLog.source_ip,
           destination_ip: newLog.destination_ip,
           protocol: newLog.protocol,
@@ -204,6 +369,7 @@ const filteredLogs = logs
 
       if (response.ok) {
         setNewLog({
+          owner_username: session.role === "admin" ? "" : session.username,
           source_ip: "",
           destination_ip: "",
           protocol: "TCP",
@@ -260,11 +426,343 @@ const filteredLogs = logs
     }
   };
 
+  const handleLoginSubmit = (e) => {
+    e.preventDefault();
+
+    const username = loginForm.username.trim();
+    const password = loginForm.password.trim();
+
+    if (!username || !password) {
+      setAuthError("Enter a username and password.");
+      return;
+    }
+
+    if (loginRole === "admin") {
+      if (username !== "admin" || password !== "admin123") {
+        setAuthError("Administrator login requires admin / admin123.");
+        return;
+      }
+
+      setSession({
+        role: "admin",
+        username: "admin",
+      });
+      setAuthError("");
+      return;
+    }
+
+    const matchedUser = registeredUsers.find(
+      (user) => user.username === username && user.password === password
+    );
+
+    if (!matchedUser) {
+      setAuthError("Account not found or password is incorrect. Sign up first.");
+      return;
+    }
+
+    setSession({
+      role: "user",
+      username: matchedUser.username,
+    });
+    setAuthError("");
+  };
+
+  const handleSignupSubmit = (e) => {
+    e.preventDefault();
+
+    const username = signupForm.username.trim();
+    const password = signupForm.password.trim();
+    const confirmPassword = signupForm.confirmPassword.trim();
+
+    if (!username || !password || !confirmPassword) {
+      setAuthError("Fill in all signup fields.");
+      return;
+    }
+
+    if (username.toLowerCase() === "admin") {
+      setAuthError("Choose a different username. admin is reserved.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setAuthError("Passwords do not match.");
+      return;
+    }
+
+    if (registeredUsers.some((user) => user.username === username)) {
+      setAuthError("That username already exists.");
+      return;
+    }
+
+    const nextUsers = [...registeredUsers, { username, password }];
+
+    setRegisteredUsers(nextUsers);
+    setSession({
+      role: "user",
+      username,
+    });
+    setLoginRole("user");
+    setAuthMode("login");
+    setLoginForm({
+      username,
+      password: "",
+    });
+    setSignupForm({
+      username: "",
+      password: "",
+      confirmPassword: "",
+    });
+    setAuthError("");
+  };
+
+  const handleLogout = () => {
+    setSession(null);
+    setLoginForm({
+      username: "",
+      password: "",
+    });
+    setSignupForm({
+      username: "",
+      password: "",
+      confirmPassword: "",
+    });
+    setLoginRole("user");
+    setAuthMode("login");
+    setAuthError("");
+  };
+
   const toggleTheme = () => {
     setTheme((previousTheme) =>
       previousTheme === "dark" ? "light" : "dark"
     );
   };
+
+  if (!session) {
+    return (
+      <div className="app-shell auth-shell">
+        <div
+          className="top-right-row"
+          style={{
+            marginBottom: "18px",
+          }}
+        >
+          <div className="brand-badge" aria-label="Application brand">
+            <span className="brand-dot" aria-hidden="true" />
+            <span className="brand-text">NetSentinel</span>
+          </div>
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={`Switch to ${isDarkMode ? "light" : "dark"} mode`}
+            style={{
+              padding: "10px 16px",
+              borderRadius: "999px",
+              border: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              color: "var(--text-h)",
+              cursor: "pointer",
+              fontWeight: "bold",
+            }}
+          >
+            {isDarkMode ? "Light Mode" : "Dark Mode"}
+          </button>
+        </div>
+
+        <div className="auth-card">
+          <div className="auth-copy">
+            <h1 className="auth-title">Secure Access</h1>
+            <p className="auth-subtitle">
+              Sign in as a user to see your own log dashboard, or create a new
+              user account first. Administrators can review every client log.
+            </p>
+          </div>
+
+          <div className="auth-role-switch" role="tablist" aria-label="Login type">
+            <button
+              type="button"
+              className={loginRole === "user" ? "auth-role active" : "auth-role"}
+              onClick={() => {
+                setLoginRole("user");
+                setAuthError("");
+              }}
+            >
+              User Access
+            </button>
+            <button
+              type="button"
+              className={loginRole === "admin" ? "auth-role active" : "auth-role"}
+              onClick={() => {
+                setLoginRole("admin");
+                setAuthError("");
+              }}
+            >
+              Administrator Login
+            </button>
+          </div>
+
+          {loginRole === "user" && (
+            <button
+              type="button"
+              className="auth-switch-button"
+              onClick={() => {
+                setAuthMode((previousMode) =>
+                  previousMode === "login" ? "register" : "login"
+                );
+                setAuthError("");
+              }}
+            >
+              {authMode === "login"
+                ? "Need a new account? Register as User"
+                : "Already registered? Login as User"}
+            </button>
+          )}
+
+          {loginRole === "admin" ? (
+            <form className="auth-form" onSubmit={handleLoginSubmit}>
+              <label className="auth-field">
+                <span>Username</span>
+                <input
+                  type="text"
+                  value={loginForm.username}
+                  onChange={(event) =>
+                    setLoginForm((previous) => ({
+                      ...previous,
+                      username: event.target.value,
+                    }))
+                  }
+                  placeholder="admin"
+                  autoComplete="username"
+                />
+              </label>
+
+              <label className="auth-field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={loginForm.password}
+                  onChange={(event) =>
+                    setLoginForm((previous) => ({
+                      ...previous,
+                      password: event.target.value,
+                    }))
+                  }
+                  placeholder="admin123"
+                  autoComplete="current-password"
+                />
+              </label>
+
+              {authError && <p className="auth-error">{authError}</p>}
+
+              <button type="submit" className="auth-submit">
+                Enter Administrator Dashboard
+              </button>
+            </form>
+          ) : authMode === "login" ? (
+            <form className="auth-form" onSubmit={handleLoginSubmit}>
+              <label className="auth-field">
+                <span>Username</span>
+                <input
+                  type="text"
+                  value={loginForm.username}
+                  onChange={(event) =>
+                    setLoginForm((previous) => ({
+                      ...previous,
+                      username: event.target.value,
+                    }))
+                  }
+                  placeholder="your username"
+                  autoComplete="username"
+                />
+              </label>
+
+              <label className="auth-field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={loginForm.password}
+                  onChange={(event) =>
+                    setLoginForm((previous) => ({
+                      ...previous,
+                      password: event.target.value,
+                    }))
+                  }
+                  placeholder="your password"
+                  autoComplete="current-password"
+                />
+              </label>
+
+              {authError && <p className="auth-error">{authError}</p>}
+
+              <button type="submit" className="auth-submit">
+                Login as User
+              </button>
+            </form>
+          ) : (
+            <form className="auth-form" onSubmit={handleSignupSubmit}>
+              <label className="auth-field">
+                <span>Username</span>
+                <input
+                  type="text"
+                  value={signupForm.username}
+                  onChange={(event) =>
+                    setSignupForm((previous) => ({
+                      ...previous,
+                      username: event.target.value,
+                    }))
+                  }
+                  placeholder="choose a username"
+                  autoComplete="username"
+                />
+              </label>
+
+              <label className="auth-field">
+                <span>Password</span>
+                <input
+                  type="password"
+                  value={signupForm.password}
+                  onChange={(event) =>
+                    setSignupForm((previous) => ({
+                      ...previous,
+                      password: event.target.value,
+                    }))
+                  }
+                  placeholder="create a password"
+                  autoComplete="new-password"
+                />
+              </label>
+
+              <label className="auth-field">
+                <span>Confirm Password</span>
+                <input
+                  type="password"
+                  value={signupForm.confirmPassword}
+                  onChange={(event) =>
+                    setSignupForm((previous) => ({
+                      ...previous,
+                      confirmPassword: event.target.value,
+                    }))
+                  }
+                  placeholder="repeat your password"
+                  autoComplete="new-password"
+                />
+              </label>
+
+              {authError && <p className="auth-error">{authError}</p>}
+
+              <button type="submit" className="auth-submit">
+                Register as User
+              </button>
+            </form>
+          )}
+
+          <p className="auth-note">
+            Demo admin credentials: <strong>admin / admin123</strong>. User
+            accounts are stored in your browser after registration.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -294,6 +792,21 @@ const filteredLogs = logs
         >
           {isDarkMode ? "Light Mode" : "Dark Mode"}
         </button>
+        <button
+          type="button"
+          onClick={handleLogout}
+          style={{
+            padding: "10px 16px",
+            borderRadius: "999px",
+            border: "1px solid var(--border)",
+            background: "transparent",
+            color: "var(--text-h)",
+            cursor: "pointer",
+            fontWeight: "bold",
+          }}
+        >
+          Logout
+        </button>
       </div>
 
       <h1
@@ -305,6 +818,31 @@ const filteredLogs = logs
       >
         AI Network Monitoring IDS
       </h1>
+      <div style={{ textAlign: "center", marginBottom: "20px" }}>
+    {captureRunning ? (
+        <button onClick={stopCapture}>
+            🔴 Stop Live Capture
+        </button>
+    ) : (
+        <button onClick={startCapture}>
+            🟢 Start Live Capture
+        </button>
+    )}
+</div>
+
+      <p
+        className="dashboard-subtitle"
+        style={{
+          textAlign: "center",
+          marginTop: "-18px",
+          marginBottom: "18px",
+          color: "var(--text-muted)",
+        }}
+      >
+        {session.role === "admin"
+          ? "Administrator Dashboard - all client logs"
+          : `User Dashboard - ${session.username}`}
+      </p>
 
       <p
         style={{
@@ -437,6 +975,17 @@ const filteredLogs = logs
           flexWrap: "wrap",
         }}
       >
+        {session.role === "admin" && (
+          <input
+            type="text"
+            name="owner_username"
+            placeholder="Client Username"
+            value={newLog.owner_username}
+            onChange={handleChange}
+            required
+          />
+        )}
+
         <input
           type="text"
           name="source_ip"
@@ -565,6 +1114,7 @@ const filteredLogs = logs
         >
           <thead>
             <tr>
+              <th>Owner</th>
               <th>ID</th>
               <th>Source IP</th>
               <th>Destination IP</th>
@@ -578,6 +1128,7 @@ const filteredLogs = logs
           <tbody>
             {paginatedLogs.map((log) => (
               <tr key={log.id}>
+                <td>{log.owner_username || session.username}</td>
                 <td>{log.id}</td>
                 <td>{log.source_ip}</td>
                 <td>{log.destination_ip}</td>
@@ -596,7 +1147,7 @@ const filteredLogs = logs
 
             {paginatedLogs.length === 0 && (
               <tr>
-                <td colSpan="7">No logs available for this filter.</td>
+                <td colSpan="8">No logs available for this filter.</td>
               </tr>
             )}
           </tbody>

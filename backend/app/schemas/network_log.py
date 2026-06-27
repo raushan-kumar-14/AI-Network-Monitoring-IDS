@@ -3,6 +3,7 @@ from datetime import datetime
 
 
 class NetworkLogCreate(BaseModel):
+    owner_username: str = "admin"
     source_ip: str
     destination_ip: str
     protocol: str

@@ -8,6 +8,7 @@ class NetworkLog(Base):
     __tablename__ = "network_logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    owner_username = Column(String, index=True, default="admin")
     source_ip = Column(String, index=True)
     destination_ip = Column(String, index=True)
     protocol = Column(String)
