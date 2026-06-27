@@ -121,6 +121,12 @@ function App() {
   });
   const [captureRunning, setCaptureRunning] = useState(false);
 
+  const [agentInstalled, setAgentInstalled] = useState(false);
+
+  useEffect(() => {
+  console.log("agentInstalled =", agentInstalled);
+}, [agentInstalled]);
+
   const [agentStats, setAgentStats] = useState({
   running: false,
   packet_count: 0,
@@ -128,6 +134,33 @@ function App() {
 });
 
   const isDarkMode = theme === "dark";
+  
+  // 👇 ADD THE FUNCTION HERE
+const checkAgent = async () => {
+  try {
+    const response = await fetch("http://127.0.0.1:5050/stats");
+
+    if (response.ok) {
+      setAgentInstalled(true);
+    } else {
+      setAgentInstalled(false);
+    }
+  } catch (err) {
+    setAgentInstalled(false);
+  }
+};
+  
+  useEffect(() => {
+  if (!session) return;
+
+  checkAgent();
+
+  const interval = setInterval(() => {
+    checkAgent();
+  }, 5000);
+
+  return () => clearInterval(interval);
+}, [session]);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -841,10 +874,23 @@ const filteredLogs = logs
             🔴 Stop Live Capture
         </button>
     ) : (
-        <button onClick={startCapture}>
-            🟢 Start Live Capture
-        </button>
-    )}
+        agentInstalled ? (
+    <button onClick={startCapture}>
+      🟢 Start Live Capture
+    </button>
+  ) : (
+    <button
+      onClick={() =>
+        window.open(
+          "https://your-backend-or-website.com/downloads/AgentSetup.exe",
+          "_blank"
+        )
+      }
+    >
+      ⬇ Download Windows Agent
+    </button>
+  )
+)}
 </div>
 
 
