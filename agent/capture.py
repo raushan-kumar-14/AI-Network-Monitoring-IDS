@@ -1,12 +1,19 @@
 from scapy.all import sniff, IP, TCP, UDP, ICMP
 import requests
 
-from config import BACKEND_URL, USERNAME
+import time
+import config
 
 capture_running=False
 
 
+packet_count = 0
+capture_start_time = None
+
 def process_packet(packet):
+    global packet_count
+    packet_count += 1
+    
     if IP not in packet:
         return
 
@@ -23,7 +30,7 @@ def process_packet(packet):
         protocol = "OTHER"
 
     data = {
-        "owner_username": USERNAME,
+        "owner_username": config.USERNAME,
         "source_ip": source_ip,
         "destination_ip": destination_ip,
         "protocol": protocol,
@@ -31,8 +38,10 @@ def process_packet(packet):
     }
 
     try:
+        print("Sending packet for:", config.USERNAME)
+        print(data)
         requests.post(
-            f"{BACKEND_URL}/logs",
+            f"{config.BACKEND_URL}/logs",
             json=data,
             timeout=2
         )
@@ -42,6 +51,12 @@ def process_packet(packet):
 
 def start_capture():
     global capture_running
+    
+    global capture_start_time
+    global packet_count
+
+    packet_count = 0
+    capture_start_time = time.time()
 
     capture_running = True
 
@@ -54,5 +69,23 @@ def start_capture():
     )
 def stop_capture():
     global capture_running
+    global capture_start_time
+
     print("Stopping capture...")
+
     capture_running = False
+    capture_start_time = None
+def get_stats():
+    if capture_running and capture_start_time:
+        uptime = int(time.time() - capture_start_time)
+    else:
+        uptime = 0
+    
+    print("capture_running =", capture_running)
+    print("capture_start_time =", capture_start_time)
+
+    return {
+        "running": capture_running,
+        "packet_count": packet_count,
+        "uptime": uptime
+    }

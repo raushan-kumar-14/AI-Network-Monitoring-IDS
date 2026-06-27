@@ -121,6 +121,12 @@ function App() {
   });
   const [captureRunning, setCaptureRunning] = useState(false);
 
+  const [agentStats, setAgentStats] = useState({
+  running: false,
+  packet_count: 0,
+  uptime: 0,
+});
+
   const isDarkMode = theme === "dark";
 
   useEffect(() => {
@@ -187,6 +193,15 @@ function App() {
         setBackendStatus(false);
       });
   };
+  const fetchAgentStats = async () => {
+  try {
+    const response = await fetch("http://127.0.0.1:5050/stats");
+    const data = await response.json();
+    setAgentStats(data);
+  } catch (error) {
+    console.error("Failed to fetch agent stats:", error);
+  }
+};
   const startCapture = async () => {
     await axios.post(
         "http://127.0.0.1:5050/start",
@@ -212,10 +227,12 @@ const stopCapture = async () => {
     }
 
     fetchLogs();
+    fetchAgentStats();
 
     const interval = setInterval(() => {
       fetchLogs();
-    }, 5000); // refresh every 5 seconds
+      fetchAgentStats();
+    }, 1000); // refresh every 1 second
 
     return () => clearInterval(interval);
   }, [session]);
@@ -829,6 +846,24 @@ const filteredLogs = logs
         </button>
     )}
 </div>
+
+
+<div
+  style={{
+    marginTop: "20px",
+    marginBottom: "20px",
+    padding: "12px",
+    background: "#1f2937",
+    borderRadius: "10px",
+    color: "white",
+    display: "inline-block",
+    minWidth: "260px",
+  }}
+>
+  <div>📦 Packets Captured: {agentStats.packet_count}</div>
+  <div>⏱ Uptime: {agentStats.uptime} sec</div>
+</div>
+
 
       <p
         className="dashboard-subtitle"

@@ -3,7 +3,7 @@ from flask_cors import CORS
 import threading
 
 import config
-from capture import start_capture, stop_capture
+from capture import start_capture, stop_capture, get_stats
 
 app = Flask(__name__)
 CORS(app)
@@ -61,9 +61,13 @@ def status():
         "running": capture_running
     })
 
+@app.get("/stats")
+def stats():
+    return jsonify(get_stats())
 
 if __name__ == "__main__":
     app.run(
         host="127.0.0.1",
         port=5050
     )
+    
