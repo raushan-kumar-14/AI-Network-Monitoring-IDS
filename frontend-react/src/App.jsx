@@ -207,12 +207,14 @@ const checkAgent = async () => {
       return;
     }
 
-    const endpoint =
-      session.role === "admin"
-        ? "http://127.0.0.1:8000/logs"
-        : `http://127.0.0.1:8000/logs?owner_username=${encodeURIComponent(
-            session.username
-          )}`;
+    const API_URL = import.meta.env.VITE_API_URL;
+
+const endpoint =
+  session.role === "admin"
+    ? `${API_URL}/logs`
+    : `${API_URL}/logs?owner_username=${encodeURIComponent(
+        session.username
+      )}`;
 
     fetch(endpoint)
       .then((response) => response.json())
@@ -403,7 +405,7 @@ const filteredLogs = logs
     }
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/logs", {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/logs`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

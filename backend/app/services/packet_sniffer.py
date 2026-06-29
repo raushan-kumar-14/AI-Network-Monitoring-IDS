@@ -10,7 +10,7 @@ def set_owner(owner):
     global CURRENT_OWNER
     CURRENT_OWNER = owner
 
-API_URL = "http://127.0.0.1:8000/logs"
+API_URL = "https://netsentinel-backend-hm6r.onrender.com/logs"
 
 
 def process_packet(packet):
