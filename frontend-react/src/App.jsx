@@ -884,7 +884,7 @@ const filteredLogs = logs
     <button
       onClick={() =>
         window.open(
-          "https://your-backend-or-website.com/downloads/AgentSetup.exe",
+          "/downloads/AgentInstaller.exe",
           "_blank"
         )
       }
