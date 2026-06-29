@@ -4,6 +4,7 @@ import requests
 import time
 import config
 
+print("===capture.py loaded===")  
 capture_running=False
 
 
@@ -11,6 +12,7 @@ packet_count = 0
 capture_start_time = None
 
 def process_packet(packet):
+    print("process_packet called")
     global packet_count
     packet_count += 1
     
