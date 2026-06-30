@@ -9,16 +9,16 @@ app = Flask(__name__)
 CORS(app)
 
 capture_thread = None
-capture_running = False
+
 
 
 @app.post("/start")
 def start():
 
     global capture_thread
-    global capture_running
 
-    if capture_running:
+
+    if capture_thread is not None and capture_thread.is_alive():
         return jsonify({"status": "already_running"})
 
     data = request.get_json()
@@ -34,7 +34,7 @@ def start():
 
     capture_thread.start()
 
-    capture_running = True
+    
 
     return jsonify({
         "status": "started",
@@ -44,11 +44,7 @@ def start():
 @app.post("/stop")
 def stop():
 
-    global capture_running
-
     stop_capture()
-
-    capture_running = False
 
     return jsonify({
         "status": "stopped"
@@ -56,14 +52,23 @@ def stop():
 
 @app.get("/status")
 def status():
-
     return jsonify({
-        "running": capture_running
+        "running": (
+            capture_thread is not None
+            and capture_thread.is_alive()
+        )
     })
 
-@app.get("/stats")
+@app.route("/stats")
 def stats():
-    return jsonify(get_stats())
+    stats = get_stats()
+
+    stats["thread_alive"] = (
+        capture_thread is not None
+        and capture_thread.is_alive()
+    )
+
+    return jsonify(stats)
 
 if __name__ == "__main__":
     app.run(

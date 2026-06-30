@@ -4,6 +4,8 @@ import requests
 import time
 import config
 
+session = requests.session()
+
 print("===capture.py loaded===")  
 capture_running=False
 
@@ -42,7 +44,7 @@ def process_packet(packet):
     try:
         print("Sending packet for:", config.USERNAME)
         print(data)
-        requests.post(
+        session.post(
             f"{config.BACKEND_URL}/logs",
             json=data,
             timeout=2
@@ -64,11 +66,18 @@ def start_capture():
 
     print("Agent started...")
 
-    sniff(
-        prn=process_packet,
-        store=False,
-        stop_filter=lambda packet: not capture_running
-    )
+    try:
+        sniff(
+            prn=process_packet,
+            store=False,
+            stop_filter=lambda packet: not capture_running
+        )
+    except Exception as e:
+        print("Sniff error:", e)
+    finally:
+        capture_running = False
+        print("Capture thread exited")
+    
 def stop_capture():
     global capture_running
     global capture_start_time
@@ -83,11 +92,8 @@ def get_stats():
     else:
         uptime = 0
     
-    print("capture_running =", capture_running)
-    print("capture_start_time =", capture_start_time)
-
     return {
-        "running": capture_running,
-        "packet_count": packet_count,
-        "uptime": uptime
-    }
+    "running": capture_running,
+    "packet_count": packet_count,
+    "uptime": uptime
+}

@@ -21,6 +21,15 @@ Name: "{commondesktop}\AI Network Monitoring Agent"; Filename: "{app}\Agent.exe"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
 
 [Run]
+
+Filename: "sc.exe"; \
+Parameters: "stop NetworkAgent"; \
+Flags: runhidden waituntilterminated skipifdoesntexist
+
+Filename: "{app}\nssm.exe"; \
+Parameters: "remove NetworkAgent confirm"; \
+Flags: runhidden waituntilterminated skipifdoesntexist
+
 Filename: "{app}\nssm.exe"; \
 Parameters: "install NetworkAgent ""{app}\Agent.exe"""; \
 Flags: runhidden waituntilterminated
@@ -29,10 +38,26 @@ Filename: "{app}\nssm.exe"; \
 Parameters: "set NetworkAgent AppDirectory ""{app}"""; \
 Flags: runhidden waituntilterminated
 
-Filename: "sc.exe"; \
-Parameters: "start NetworkAgent"; \
+Filename: "{app}\nssm.exe"; \
+Parameters: "set NetworkAgent Start SERVICE_AUTO_START"; \
 Flags: runhidden waituntilterminated
 
-[UninstallRun]
-Filename: "sc.exe"; Parameters: "stop NetworkAgent"; Flags: runhidden waituntilterminated
-Filename: "{app}\nssm.exe"; Parameters: "remove NetworkAgent confirm"; Flags: runhidden waituntilterminated
+Filename: "{app}\nssm.exe"; \
+Parameters: "set NetworkAgent AppExit Default Restart"; \
+Flags: runhidden waituntilterminated
+
+Filename: "{app}\nssm.exe"; \
+Parameters: "set NetworkAgent AppThrottle 1500"; \
+Flags: runhidden waituntilterminated
+
+Filename: "sc.exe"; \
+Parameters: "failure NetworkAgent reset= 86400 actions= restart/5000"; \
+Flags: runhidden waituntilterminated skipifdoesntexist
+
+Filename: "sc.exe"; \
+Parameters: "description NetworkAgent ""AI Network Monitoring Agent Service"""; \
+Flags: runhidden waituntilterminated skipifdoesntexist
+
+Filename: "sc.exe"; \
+Parameters: "start NetworkAgent"; \
+Flags: runhidden waituntilterminated skipifdoesntexist
